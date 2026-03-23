@@ -48,4 +48,8 @@ Instead of asking Steam/GOG for the user's games every time they click "Analyze"
 - **Constraint**: Unique (`user_id`, `provider_name`, `game_name`)
 
 ## Security (Row Level Security)
-- Users can only `SELECT`, `INSERT`, `UPDATE`, and `DELETE` rows in `provider_connections`, `user_gaming_dna`, and `cached_library` where `user_id == auth.uid()`.
+All tables use RLS so that users can only access their own data (`user_id == auth.uid()`):
+- **`user_profiles`**: `SELECT`, `INSERT`, `UPDATE` own row. `DELETE` is optional (account deletion flow).
+- **`provider_connections`**: `SELECT` own rows only. All writes (`INSERT`/`UPDATE`/`DELETE`) go through the backend API to validate OAuth tokens and cascade cleanup.
+- **`user_gaming_dna`**: `SELECT`, `UPDATE` own row (only the backend service should `INSERT`).
+- **`cached_library`**: `SELECT` own rows (only the backend sync service should `INSERT`/`UPDATE`/`DELETE`).

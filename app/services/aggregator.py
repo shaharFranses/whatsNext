@@ -11,24 +11,37 @@ class TagAggregator:
 
     async def get_user_dna(self, game_names: List[str]) -> Dict[str, Any]:
         """
-        Build a 'user DNA' map of the most frequent tags across a list of games.
-        Returns a dictionary with 'top_tags' and 'all_tags_count'.
+        Build a 'user DNA' map by aggregating genres, themes, and keywords separately.
         """
         tags_map = await self.igdb_provider.get_tags_for_games(game_names)
         
-        all_tags = []
-        for tags in tags_map.values():
-            all_tags.extend(tags)
+        counts = {
+            "genres": Counter(),
+            "themes": Counter(),
+            "keywords": Counter()
+        }
 
-        tag_counts = Counter(all_tags)
+        for game_data in tags_map.values():
+            for field in counts.keys():
+                counts[field].update(game_data.get(field, []))
+
+        # Helper to get sorted list from Counter
+        def get_top(counter, n=10):
+            return [str(item) for item, count in counter.most_common(n)]
+
+        top_genres = get_top(counts["genres"])
+        top_themes = get_top(counts["themes"])
+        top_keywords = get_top(counts["keywords"])
         
-        # Sort tags by frequency (most common first)
-        sorted_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)
-        
-        top_tags = [str(tag) for tag, count in sorted_tags[:10]]
-        
+        # We still provide a legacy 'top_tags' for backward compatibility with current Recommender
+        # But we'll update Recommender next to use the better structure.
+        top_tags = list(set(top_genres + top_themes + top_keywords))[:10]
+
         return {
-            "top_tags": top_tags,
-            "tag_distribution": dict(sorted_tags),
+            "top_genres": top_genres,
+            "top_themes": top_themes,
+            "top_keywords": top_keywords,
+            "top_tags": top_tags, # Compatibility
+            "all_counts": {k: dict(v) for k, v in counts.items()},
             "game_breakdown": tags_map
         }

@@ -204,22 +204,25 @@ class IGDBProvider:
     # Batch tag fetching (used by TagAggregator)
     # ------------------------------------------------------------------
 
-    async def get_tags_for_games(self, names: List[str]) -> Dict[str, List[str]]:
-        """Batch-fetch tags (genres + themes + keywords) for game names."""
-        tags_map: Dict[str, List[str]] = {}
+    async def get_tags_for_games(self, names: List[str]) -> Dict[str, Dict[str, List[str]]]:
+        """Batch-fetch tags (genres + themes + keywords) for game names separately."""
+        tags_map: Dict[str, Dict[str, List[str]]] = {}
         for name in names:
             metadata = await self.get_game_metadata(name)
             if metadata:
-                tags: List[str] = []
+                game_tags: Dict[str, List[str]] = {}
                 for field in ["genres", "themes", "keywords"]:
                     items = metadata.get(field, [])
                     if isinstance(items, list):
-                        tags.extend(
-                            [item["name"] for item in items if isinstance(item, dict) and "name" in item]
-                        )
-                tags_map[name] = list(set(tags))
+                        game_tags[field] = [
+                            item["name"] for item in items 
+                            if isinstance(item, dict) and "name" in item
+                        ]
+                    else:
+                        game_tags[field] = []
+                tags_map[name] = game_tags
             else:
-                tags_map[name] = []
+                tags_map[name] = {"genres": [], "themes": [], "keywords": []}
         return tags_map
 
     # ------------------------------------------------------------------

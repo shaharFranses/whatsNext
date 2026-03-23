@@ -7,7 +7,8 @@ STEAM_API_KEY = os.getenv("STEAM_API_KEY")
 STEAM_USER_ID = os.getenv("STEAM_USER_ID")
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID")
 TWITCH_CLIENT_SECRET = os.getenv("TWITCH_CLIENT_SECRET")
-
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 def validate():
     """Raise early if required env vars are missing."""

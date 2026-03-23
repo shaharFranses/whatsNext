@@ -20,12 +20,13 @@ class Recommender:
     # ------------------------------------------------------------------
 
     async def _resolve_dna_genre_ids(self, dna: Dict[str, Any]) -> List[int]:
-        """Turn the user's top_tags into IGDB genre IDs (best-effort)."""
-        tags = dna.get("top_tags", [])
-        ids = await self.igdb.resolve_genre_ids(tags)
+        """Use top_genres and top_themes to get IGDB IDs."""
+        genres = dna.get("top_genres", [])
+        themes = dna.get("top_themes", [])
+        
+        ids = await self.igdb.resolve_genre_ids(genres)
         if not ids:
-            # Fallback: try themes
-            ids = await self.igdb.resolve_theme_ids(tags)
+            ids = await self.igdb.resolve_theme_ids(themes)
         return ids
 
     @staticmethod

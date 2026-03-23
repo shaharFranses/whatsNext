@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from typing import Dict, Any
+from pydantic import BaseModel
+from typing import Dict, Any, Optional
 import os
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from app.config import (
     TWITCH_CLIENT_SECRET, 
     validate
 )
+from app.auth import get_current_user
 from app.providers.steam import SteamProvider
 from app.providers.igdb import IGDBProvider
 from app.services.aggregator import TagAggregator
@@ -25,6 +27,19 @@ igdb_provider = IGDBProvider(
 )
 aggregator = TagAggregator(igdb_provider=igdb_provider)
 recommender = Recommender(igdb_provider=igdb_provider)
+
+# Request Models
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    username: str
+
+class ProfileUpdate(BaseModel):
+    username: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+class SyncRequest(BaseModel):
+    steam_id: str
 
 app = FastAPI(title="What Next", version="0.1.0")
 
@@ -50,18 +65,127 @@ async def health_check():
     return {"status": "ok"}
 
 
-@app.get("/api/analyze/{steam_id}")
-async def analyze_steam_profile(steam_id: str) -> Dict[str, Any]:
+@app.get("/api/me")
+async def get_me(user: Any = Depends(get_current_user)):
+    """Return the currently authenticated user's metadata."""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "last_sign_in_at": user.last_sign_in_at
+    }
+
+
+@app.post("/api/auth/signup")
+async def signup(data: SignupRequest):
     """
-    Orchestrate the recommendation pipeline:
-    1. Fetch top games from Steam.
-    2. Aggregate tags/DNA.
-    3. Generate recommendations for archetypes.
-    4. Format for frontend.
+    Wrapper for Supabase signup. 
+    Passes username as user_metadata so the DB trigger can pick it up.
     """
     try:
-        # 0. Fetch ALL owned games to build exclusions and backlog
-        all_games = await steam_provider.get_owned_games(steam_id)
+        from app.db import supabase
+        res = supabase.auth.sign_up({
+            "email": data.email, 
+            "password": data.password,
+            "options": {
+                "data": {
+                    "username": data.username
+                }
+            }
+        })
+        return {"status": "success", "user": res.user}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.put("/api/profiles/me")
+async def update_profile(data: ProfileUpdate, user: Any = Depends(get_current_user)):
+    """Update the current user's profile in the database."""
+    from app.services.db_service import DBService
+    success = DBService.upsert_user_profile(
+        user_id=user.id,
+        username=data.username,
+        avatar_url=data.avatar_url
+    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+    return {"status": "success"}
+
+
+@app.get("/api/dna/me")
+async def get_my_dna(user: Any = Depends(get_current_user)):
+    """Fetch the current user's saved gaming DNA."""
+    from app.services.db_service import DBService
+    dna = DBService.get_gaming_dna(user.id)
+    if not dna:
+        return {"status": "empty", "genres": [], "themes": []}
+    return {
+        "status": "success",
+        "genres": dna.get("top_genres", []),
+        "themes": dna.get("top_themes", []),
+        "updated_at": dna.get("updated_at")
+    }
+
+
+@app.post("/api/steam/sync")
+async def sync_steam_library(data: SyncRequest, user: Any = Depends(get_current_user)):
+    """Fetch Steam library and cache it in the database."""
+    from app.services.db_service import DBService
+    try:
+        # 1. Fetch from Steam
+        games = await steam_provider.get_owned_games(data.steam_id)
+        if not games:
+             raise HTTPException(status_code=404, detail="No games found for this Steam ID.")
+
+        # 2. Update connection link
+        DBService.upsert_provider_connection(
+            user_id=user.id,
+            provider_name="steam",
+            account_id=data.steam_id
+        )
+
+        # 3. Sync library cache
+        # DBService expects a specific format
+        formatted_games = []
+        for g in games:
+            formatted_games.append({
+                "game_name": g.get("name"),
+                "playtime_minutes": g.get("playtime_forever", 0),
+                "last_played_at": None # Steam V1 doesn't always provide this in the main list easily
+            })
+        
+        DBService.sync_cached_library(user.id, "steam", formatted_games)
+        
+        return {"status": "success", "game_count": len(games)}
+    except Exception as e:
+        logger.error(f"Sync error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/analyze/{steam_id}")
+async def analyze_steam_profile(
+    steam_id: Optional[str] = None, 
+    user: Any = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Orchestrate the recommendation pipeline.
+    If steam_id is omitted, we use the linked Steam ID from the database.
+    """
+    from app.services.db_service import DBService
+    
+    target_steam_id = steam_id
+    
+    # 1. Resolve Steam ID if not provided
+    if not target_steam_id:
+        connections = DBService.get_provider_connections(user.id)
+        steam_conn = next((c for c in connections if c["provider_name"] == "steam"), None)
+        if not steam_conn:
+            raise HTTPException(status_code=400, detail="No Steam account linked. Please provide a Steam ID or link your account.")
+        target_steam_id = steam_conn["provider_account_id"]
+
+    try:
+        # 2. Fetch or Use Cached Library
+        # For simplicity in this first ver, we'll fetch fresh but we'll use the resolved ID
+        all_games = await steam_provider.get_owned_games(target_steam_id)
         all_game_names = [g.get("name") for g in all_games if g.get("name")]
         
         # Build backlog (games played between 30 mins and 3 hours)
@@ -78,8 +202,15 @@ async def analyze_steam_profile(steam_id: str) -> Dict[str, Any]:
         dna_game_names = [g.get("name") for g in top_games if g.get("name")]
         
         # 2. Get User DNA (tags)
+        # Refactored TagAggregator now provides separate buckets
         dna_data = await aggregator.get_user_dna(dna_game_names)
-        dna_tags = dna_data.get("top_tags", [])
+        
+        # PERSIST: Save DNA to DB for future use in the dashboard
+        DBService.upsert_gaming_dna(
+            user_id=user.id,
+            top_genres=dna_data.get("top_genres", []),
+            top_themes=dna_data.get("top_themes", [])
+        )
         
         # 3. Generate Recommendations (exclude ALL owned games)
         modern_hits = await recommender.recommend_modern(dna_data, exclude=all_game_names)
@@ -90,7 +221,11 @@ async def analyze_steam_profile(steam_id: str) -> Dict[str, Any]:
         
         # 4. Format for Frontend
         return {
-            "dna": dna_tags,
+            "dna": dna_data.get("top_genres", []) + dna_data.get("top_themes", []), # Combined for display
+            "dna_detailed": {
+                "genres": dna_data.get("top_genres"),
+                "themes": dna_data.get("top_themes")
+            },
             "recommendations": {
                 "modern": modern_hits[0] if modern_hits else {"name": "N/A", "reasoning": "No modern match found."},
                 "gem": hidden_gems[0] if hidden_gems else {"name": "N/A", "reasoning": "No hidden gem found."},
