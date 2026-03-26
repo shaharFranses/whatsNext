@@ -13,6 +13,7 @@ function App() {
     const [data, setData] = useState(null);
     const [steamId, setSteamId] = useState('');
     const [isConciergeOpen, setIsConciergeOpen] = useState(false);
+    const [error, setError] = useState('');
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -31,6 +32,7 @@ function App() {
     const handleAnalyze = async (id = null) => {
         if (id) setSteamId(id);
         setAnalyzing(true);
+        setError('');
         try {
             const token = session?.access_token;
             // If No ID is passed, we call the endpoint without it (backend will use linked ID)
@@ -53,7 +55,7 @@ function App() {
             setData(result);
         } catch (err) {
             console.error(err);
-            alert(`Error: ${err.message}`);
+            setError(err.message);
         } finally {
             setAnalyzing(false);
         }
@@ -61,6 +63,7 @@ function App() {
 
     const handleSync = async (id) => {
         setAnalyzing(true);
+        setError('');
         try {
             const token = session?.access_token;
             const response = await fetch(`${API_BASE}/api/steam/sync`, {
@@ -81,7 +84,7 @@ function App() {
             await handleAnalyze();
         } catch (err) {
             console.error(err);
-            alert(`Sync Error: ${err.message}`);
+            setError(err.message);
         } finally {
             setAnalyzing(false);
         }
@@ -90,6 +93,7 @@ function App() {
     const handleReset = () => {
         setData(null);
         setSteamId('');
+        setError('');
     };
 
     const handleLogout = async () => {
@@ -137,8 +141,14 @@ function App() {
                     </div>
                 )}
 
+                {error && (
+                    <div className="max-w-xl mx-auto mb-6 px-4 py-3 rounded-xl bg-red-900/40 border border-red-500/40 text-red-300 text-sm text-center">
+                        {error}
+                    </div>
+                )}
+
                 {!data ? (
-                    <Landing 
+                    <Landing
                         onAnalyze={handleAnalyze} 
                         onSync={handleSync}
                         analyzing={analyzing} 

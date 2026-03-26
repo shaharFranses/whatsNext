@@ -123,8 +123,8 @@ class SteamProvider:
             }
 
         tasks = [fetch_achievements_for_game(g) for g in top_by_playtime]
-        results_tuple = await asyncio.gather(*tasks)
-        results = list(results_tuple)
+        results_tuple = await asyncio.gather(*tasks, return_exceptions=True)
+        results = [r for r in results_tuple if not isinstance(r, Exception)]
 
         # 4. Sort by achievement percentage descending, then fallback to playtime
         results.sort(key=lambda x: (x["_sort_pct"], x["playtime_hours"]), reverse=True)

@@ -88,10 +88,11 @@ class IGDBProvider:
                 response.raise_for_status()
                 data = response.json()
                 return data if isinstance(data, list) else []
-            except httpx.TimeoutException:
-                logger.warning("IGDB timeout on attempt %d/3", attempt + 1)
+            except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                logger.warning("IGDB request error on attempt %d/3: %s", attempt + 1, e)
                 if attempt == 2:
                     raise
+                await _async_sleep(2)
 
         return []
 

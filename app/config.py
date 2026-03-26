@@ -25,12 +25,29 @@ def validate():
         missing.append("TWITCH_CLIENT_ID")
     if not TWITCH_CLIENT_SECRET:
         missing.append("TWITCH_CLIENT_SECRET")
+    if not SUPABASE_URL:
+        missing.append("SUPABASE_URL")
+    if not SUPABASE_SERVICE_KEY:
+        missing.append("SUPABASE_SERVICE_KEY")
+
     if missing:
-        if "STEAM_API_KEY" in missing or "STEAM_USER_ID" in missing:
+        steam_missing = [m for m in missing if "STEAM" in m]
+        supabase_missing = [m for m in missing if "SUPABASE" in m]
+        igdb_missing = [m for m in missing if m in ("TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET")]
+
+        if steam_missing:
             raise RuntimeError(
-                f"Missing required Steam environment variables: {', '.join([m for m in missing if 'STEAM' in m])}. "
+                f"Missing required Steam environment variables: {', '.join(steam_missing)}. "
                 "Copy .env.template to .env and fill in your values."
             )
-        else:
-            print(f"\n[!] Warning: Missing IGDB credentials ({', '.join(missing)}).")
-            print("[!] IGDBProvider will run in MOCK MODE.\n")
+        if supabase_missing:
+            raise RuntimeError(
+                f"Missing required Supabase environment variables: {', '.join(supabase_missing)}. "
+                "Copy .env.template to .env and fill in your values."
+            )
+        if igdb_missing:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Missing IGDB credentials (%s). IGDBProvider will run in MOCK MODE.",
+                ", ".join(igdb_missing)
+            )

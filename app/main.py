@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, field_validator
 from typing import Dict, Any, Optional
+from contextlib import asynccontextmanager
 import os
 import re
 import logging
@@ -35,6 +36,13 @@ igdb_provider = IGDBProvider(
 aggregator = TagAggregator(igdb_provider=igdb_provider)
 recommender = Recommender(igdb_provider=igdb_provider)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await steam_provider._client.aclose()
+    await igdb_provider._client.aclose()
+
 # Request Models
 class SignupRequest(BaseModel):
     email: str
@@ -55,7 +63,7 @@ class SyncRequest(BaseModel):
             raise ValueError("steam_id must be a 17-digit number")
         return v.strip()
 
-app = FastAPI(title="What Next", version="0.1.0")
+app = FastAPI(title="What Next", version="0.1.0", lifespan=lifespan)
 
 # Serve frontend static files
 frontend_path = Path(__file__).parent.parent / "frontend"
