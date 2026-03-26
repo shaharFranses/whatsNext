@@ -1,7 +1,9 @@
+import logging
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.db import supabase
 
+logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -11,19 +13,20 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     """
     token = credentials.credentials
     try:
-        # Verify the token with Supabase
         user_res = supabase.auth.get_user(token)
         if not user_res or not user_res.user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired authentication token",
+                detail="Invalid or expired token. Please log in again.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return user_res.user
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Auth error: {e}")
+        logger.error("Auth error: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
+            detail="Could not validate credentials. Please log in again.",
             headers={"WWW-Authenticate": "Bearer"},
         )

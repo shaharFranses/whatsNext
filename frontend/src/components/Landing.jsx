@@ -1,14 +1,29 @@
 import React, { useState } from 'react';
 
+const STEAM_ID_RE = /^\d{17}$/;
+
 function Landing({ onAnalyze, onSync, analyzing, session }) {
     const [input, setInput] = useState('');
+    const [validationError, setValidationError] = useState('');
+
+    const validate = (value) => {
+        if (!value.trim()) return 'Please enter a Steam ID.';
+        if (!STEAM_ID_RE.test(value.trim())) return 'Steam ID must be a 17-digit number.';
+        return '';
+    };
 
     const handleSubmit = () => {
-        if (input.trim()) onAnalyze(input.trim());
+        const err = validate(input);
+        if (err) { setValidationError(err); return; }
+        setValidationError('');
+        onAnalyze(input.trim());
     };
 
     const handleSync = () => {
-        if (input.trim()) onSync(input.trim());
+        const err = validate(input);
+        if (err) { setValidationError(err); return; }
+        setValidationError('');
+        onSync(input.trim());
     };
 
     return (
@@ -53,6 +68,9 @@ function Landing({ onAnalyze, onSync, analyzing, session }) {
                     </div>
                 )}
 
+                {validationError && (
+                    <p className="text-center text-xs text-red-400">{validationError}</p>
+                )}
                 <p className="text-center text-xs text-gray-600 tracking-widest uppercase">
                     Find your SteamID in profile URL or settings
                 </p>

@@ -10,6 +10,7 @@ class SteamProvider:
 
     def __init__(self, api_key: str):
         self.api_key = api_key
+        self._client = httpx.AsyncClient(timeout=15.0)
 
     async def get_owned_games(self, steam_id: str) -> List[Dict[str, Any]]:
         """
@@ -25,10 +26,8 @@ class SteamProvider:
             "format": "json",
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params, timeout=15.0)
-            response.raise_for_status()
-
+        response = await self._client.get(url, params=params)
+        response.raise_for_status()
         data = response.json()
         games = data.get("response", {}).get("games", [])
         return games
@@ -56,10 +55,8 @@ class SteamProvider:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, timeout=15.0)
-                response.raise_for_status()
-
+            response = await self._client.get(url, params=params)
+            response.raise_for_status()
             data = response.json()
             player_stats = data.get("playerstats", {})
 
@@ -126,8 +123,8 @@ class SteamProvider:
             }
 
         tasks = [fetch_achievements_for_game(g) for g in top_by_playtime]
-        results_tuple = await asyncio.gather(*tasks)
-        results = list(results_tuple)
+        results_tuple = await asyncio.gather(*tasks, return_exceptions=True)
+        results = [r for r in results_tuple if not isinstance(r, Exception)]
 
         # 4. Sort by achievement percentage descending, then fallback to playtime
         results.sort(key=lambda x: (x["_sort_pct"], x["playtime_hours"]), reverse=True)

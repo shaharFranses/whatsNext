@@ -1,14 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
+function renderBold(text) {
+    const parts = text.split(/\*\*(.*?)\*\*/g);
+    return parts.map((part, i) =>
+        i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+    );
+}
 
 function Concierge({ initialData, isOpen, setIsOpen }) {
     const [messages, setMessages] = useState([
         { sender: 'System', text: "Hello! I'm your AI gaming guide. Analyze your library to get started." }
     ]);
     const [input, setInput] = useState('');
+    const timerRef = useRef(null);
 
     useEffect(() => {
         if (initialData) {
-            setTimeout(() => {
+            timerRef.current = setTimeout(() => {
                 setIsOpen(true);
                 const dnaTags = initialData.dna.slice(0, 3).join(', ');
                 setMessages(prev => [...prev, {
@@ -17,6 +25,7 @@ function Concierge({ initialData, isOpen, setIsOpen }) {
                 }]);
             }, 1000);
         }
+        return () => clearTimeout(timerRef.current);
     }, [initialData]);
 
     const handleSend = () => {
@@ -62,7 +71,7 @@ function Concierge({ initialData, isOpen, setIsOpen }) {
                                 {msg.sender}
                             </div>
                             <div className={`inline-block p-4 rounded-2xl text-sm leading-relaxed ${msg.sender === 'You' ? 'bg-blue-600 text-white rounded-tr-none' : 'glass-panel rounded-tl-none'}`}>
-                                {msg.text}
+                                {renderBold(msg.text)}
                             </div>
                         </div>
                     ))}

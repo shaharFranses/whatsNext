@@ -5,12 +5,15 @@ import Concierge from './components/Concierge';
 import Auth from './components/Auth';
 import { supabase } from './lib/supabase';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 function App() {
     const [session, setSession] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
     const [data, setData] = useState(null);
     const [steamId, setSteamId] = useState('');
     const [isConciergeOpen, setIsConciergeOpen] = useState(false);
+    const [error, setError] = useState('');
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -29,12 +32,13 @@ function App() {
     const handleAnalyze = async (id = null) => {
         if (id) setSteamId(id);
         setAnalyzing(true);
+        setError('');
         try {
             const token = session?.access_token;
             // If No ID is passed, we call the endpoint without it (backend will use linked ID)
-            const url = id 
-                ? `http://127.0.0.1:8000/api/analyze/${id}` 
-                : `http://127.0.0.1:8000/api/analyze/`;
+            const url = id
+                ? `${API_BASE}/api/analyze/${id}`
+                : `${API_BASE}/api/analyze/`;
             
             const response = await fetch(url, {
                 headers: {
@@ -51,7 +55,7 @@ function App() {
             setData(result);
         } catch (err) {
             console.error(err);
-            alert(`Error: ${err.message}`);
+            setError(err.message);
         } finally {
             setAnalyzing(false);
         }
@@ -59,9 +63,10 @@ function App() {
 
     const handleSync = async (id) => {
         setAnalyzing(true);
+        setError('');
         try {
             const token = session?.access_token;
-            const response = await fetch('http://127.0.0.1:8000/api/steam/sync', {
+            const response = await fetch(`${API_BASE}/api/steam/sync`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -79,7 +84,7 @@ function App() {
             await handleAnalyze();
         } catch (err) {
             console.error(err);
-            alert(`Sync Error: ${err.message}`);
+            setError(err.message);
         } finally {
             setAnalyzing(false);
         }
@@ -88,6 +93,7 @@ function App() {
     const handleReset = () => {
         setData(null);
         setSteamId('');
+        setError('');
     };
 
     const handleLogout = async () => {
@@ -135,8 +141,14 @@ function App() {
                     </div>
                 )}
 
+                {error && (
+                    <div className="max-w-xl mx-auto mb-6 px-4 py-3 rounded-xl bg-red-900/40 border border-red-500/40 text-red-300 text-sm text-center">
+                        {error}
+                    </div>
+                )}
+
                 {!data ? (
-                    <Landing 
+                    <Landing
                         onAnalyze={handleAnalyze} 
                         onSync={handleSync}
                         analyzing={analyzing} 
