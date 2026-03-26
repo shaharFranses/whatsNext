@@ -10,6 +10,7 @@ class SteamProvider:
 
     def __init__(self, api_key: str):
         self.api_key = api_key
+        self._client = httpx.AsyncClient(timeout=15.0)
 
     async def get_owned_games(self, steam_id: str) -> List[Dict[str, Any]]:
         """
@@ -25,10 +26,8 @@ class SteamProvider:
             "format": "json",
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params, timeout=15.0)
-            response.raise_for_status()
-
+        response = await self._client.get(url, params=params)
+        response.raise_for_status()
         data = response.json()
         games = data.get("response", {}).get("games", [])
         return games
@@ -56,10 +55,8 @@ class SteamProvider:
         }
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url, params=params, timeout=15.0)
-                response.raise_for_status()
-
+            response = await self._client.get(url, params=params)
+            response.raise_for_status()
             data = response.json()
             player_stats = data.get("playerstats", {})
 

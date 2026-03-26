@@ -5,6 +5,8 @@ import Concierge from './components/Concierge';
 import Auth from './components/Auth';
 import { supabase } from './lib/supabase';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 function App() {
     const [session, setSession] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
@@ -32,9 +34,9 @@ function App() {
         try {
             const token = session?.access_token;
             // If No ID is passed, we call the endpoint without it (backend will use linked ID)
-            const url = id 
-                ? `http://127.0.0.1:8000/api/analyze/${id}` 
-                : `http://127.0.0.1:8000/api/analyze/`;
+            const url = id
+                ? `${API_BASE}/api/analyze/${id}`
+                : `${API_BASE}/api/analyze/`;
             
             const response = await fetch(url, {
                 headers: {
@@ -61,7 +63,7 @@ function App() {
         setAnalyzing(true);
         try {
             const token = session?.access_token;
-            const response = await fetch('http://127.0.0.1:8000/api/steam/sync', {
+            const response = await fetch(`${API_BASE}/api/steam/sync`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

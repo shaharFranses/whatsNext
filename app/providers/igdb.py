@@ -27,6 +27,7 @@ class IGDBProvider:
         self.mock = mock or not (client_id and client_secret)
         self._access_token: Optional[str] = None
         self._token_expiry: float = 0
+        self._client = httpx.AsyncClient(timeout=30.0)
 
         # Caches: populated on first use, reused for the session
         self._genre_cache: Dict[str, int] = {}   # name -> id
@@ -50,10 +51,9 @@ class IGDBProvider:
             "grant_type": "client_credentials",
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(IGDB_AUTH_URL, params=params, timeout=15.0)
-            response.raise_for_status()
-            data = response.json()
+        response = await self._client.post(IGDB_AUTH_URL, params=params)
+        response.raise_for_status()
+        data = response.json()
 
         self._access_token = data.get("access_token")
         if not self._access_token:
@@ -77,24 +77,21 @@ class IGDBProvider:
             "Content-Type": "text/plain",
         }
 
-        async with httpx.AsyncClient() as client:
-            for attempt in range(3):
-                try:
-                    response = await client.post(
-                        url, headers=headers, content=query, timeout=30.0
-                    )
-                    if response.status_code == 429:
-                        wait = int(response.headers.get("Retry-After", "2"))
-                        logger.warning("IGDB rate-limited, waiting %ss…", wait)
-                        await _async_sleep(wait)
-                        continue
-                    response.raise_for_status()
-                    data = response.json()
-                    return data if isinstance(data, list) else []
-                except httpx.TimeoutException:
-                    logger.warning("IGDB timeout on attempt %d/3", attempt + 1)
-                    if attempt == 2:
-                        raise
+        for attempt in range(3):
+            try:
+                response = await self._client.post(url, headers=headers, content=query)
+                if response.status_code == 429:
+                    wait = int(response.headers.get("Retry-After", "2"))
+                    logger.warning("IGDB rate-limited, waiting %ss…", wait)
+                    await _async_sleep(wait)
+                    continue
+                response.raise_for_status()
+                data = response.json()
+                return data if isinstance(data, list) else []
+            except httpx.TimeoutException:
+                logger.warning("IGDB timeout on attempt %d/3", attempt + 1)
+                if attempt == 2:
+                    raise
 
         return []
 

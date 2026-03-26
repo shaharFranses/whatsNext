@@ -2,15 +2,20 @@ from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Dict, Any, Optional
 import os
+import re
+import logging
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 from app.config import (
-    STEAM_API_KEY, 
-    TWITCH_CLIENT_ID, 
-    TWITCH_CLIENT_SECRET, 
+    STEAM_API_KEY,
+    TWITCH_CLIENT_ID,
+    TWITCH_CLIENT_SECRET,
+    ALLOWED_ORIGINS,
     validate
 )
 from app.auth import get_current_user
@@ -18,6 +23,8 @@ from app.providers.steam import SteamProvider
 from app.providers.igdb import IGDBProvider
 from app.services.aggregator import TagAggregator
 from app.services.recommender import Recommender
+
+validate()
 
 # Initialize providers and services
 steam_provider = SteamProvider(api_key=STEAM_API_KEY)
@@ -41,6 +48,13 @@ class ProfileUpdate(BaseModel):
 class SyncRequest(BaseModel):
     steam_id: str
 
+    @field_validator("steam_id")
+    @classmethod
+    def validate_steam_id(cls, v: str) -> str:
+        if not re.fullmatch(r"\d{17}", v.strip()):
+            raise ValueError("steam_id must be a 17-digit number")
+        return v.strip()
+
 app = FastAPI(title="What Next", version="0.1.0")
 
 # Serve frontend static files
@@ -51,10 +65,10 @@ app.mount("/static", StaticFiles(directory=frontend_path), name="static")
 async def read_index():
     return FileResponse(frontend_path / "index.html")
 
-# Enable CORS for frontend development
+# Enable CORS — restrict to configured origins only
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -84,7 +98,7 @@ async def signup(data: SignupRequest):
     try:
         from app.db import supabase
         res = supabase.auth.sign_up({
-            "email": data.email, 
+            "email": data.email,
             "password": data.password,
             "options": {
                 "data": {
@@ -94,7 +108,8 @@ async def signup(data: SignupRequest):
         })
         return {"status": "success", "user": res.user}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Signup error: %s", e)
+        raise HTTPException(status_code=400, detail="Signup failed. Please check your details and try again.")
 
 
 @app.put("/api/profiles/me")
@@ -157,8 +172,8 @@ async def sync_steam_library(data: SyncRequest, user: Any = Depends(get_current_
         
         return {"status": "success", "game_count": len(games)}
     except Exception as e:
-        logger.error(f"Sync error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Steam sync error for user %s: %s", user.id, e)
+        raise HTTPException(status_code=500, detail="Failed to sync Steam library. Please try again.")
 
 
 @app.get("/api/analyze/{steam_id}")
@@ -172,8 +187,11 @@ async def analyze_steam_profile(
     """
     from app.services.db_service import DBService
     
+    if steam_id and not re.fullmatch(r"\d{17}", steam_id):
+        raise HTTPException(status_code=400, detail="Invalid Steam ID format. Must be a 17-digit number.")
+
     target_steam_id = steam_id
-    
+
     # 1. Resolve Steam ID if not provided
     if not target_steam_id:
         connections = DBService.get_provider_connections(user.id)
@@ -195,7 +213,7 @@ async def analyze_steam_profile(
         ]
 
         # 1. Fetch top 5 games with achievement data (the new hybrid DNA source)
-        top_games = await steam_provider.get_top_games_with_achievements(steam_id, n=5)
+        top_games = await steam_provider.get_top_games_with_achievements(target_steam_id, n=5)
         if not top_games:
             raise HTTPException(status_code=404, detail="No Steam games found for this ID.")
         
@@ -236,5 +254,5 @@ async def analyze_steam_profile(
         }
 
     except Exception as e:
-        print(f"Error generating recommendations: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Analysis error for steam_id %s: %s", target_steam_id, e)
+        raise HTTPException(status_code=500, detail="Failed to generate recommendations. Please try again.")
