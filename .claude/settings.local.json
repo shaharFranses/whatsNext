@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from app.main import app; print\\(''App imports OK''\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(npm install:*)",
+      "Bash(gh pr:*)",
+      "Bash(winget install:*)",
+      "Bash(where gh:*)",
+      "Bash(gh auth:*)",
+      "Bash(powershell -Command \"gh auth status\")",
+      "Bash(powershell -Command \"& ''C:/Program Files/GitHub CLI/gh.exe'' auth status\")",
+      "Bash(find D:codingwhatsnext.claudeworktreeszen-bohr -type f -name *.env* -o -name .env.example -o -name .env.template)"
+    ]
+  }
+}
